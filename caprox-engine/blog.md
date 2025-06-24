@@ -165,6 +165,10 @@ spec:
                 name: proxmox-image-build-config
             args:
             - build-proxmox-ubuntu-2404
+            env:
+            # helps for slow nodes
+              - name: ANSIBLE_TIMEOUT
+                value: "60"
 ```
 Just copy and save the file.
 
@@ -209,116 +213,24 @@ ArgoCD will retrieve the YAML configurations for the various Cluster-API compone
 sudo k3s kubectl create namespace argocd
 sudo k3s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
-This ArgoCD application installs the [Cluster-API Operator](https://github.com/kubernetes-sigs/cluster-api-operator). The operator is responsible for installing Cluster-API and configuring it for Proxmox. While creating this file was quite time-consuming, I'm pleased to offer it as a convenient solution rather than a list of commands. Furthermore, this app includes my opinionated ClusterClass, designed with home labs in mind. A ClusterClass acts as a template, simplifying the creation of Kubernetes clusters.
+This ArgoCD application installs the [Cluster-API Operator](https://github.com/kubernetes-sigs/cluster-api-operator). The operator is responsible for installing Cluster-API and configuring it for Proxmox. While creating this file was quite time-consuming, I'm pleased to offer it as a convenient solution rather than a list of commands. Furthermore, this app includes my opinionated ClusterClass, designed with home labs in mind. A ClusterClass acts as a template, simplifying the creation of Kubernetes clusters. 
 ```yaml
-# apps-cluster-api.yaml
+# apps-of-apps-cluster-api.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: cluster-api-operator-cert-manager
+  # This needs to be an apps-of-apps to have the install order of the cluster-api components right
+  name: cluster-api-apps-of-apps
   namespace: argocd 
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
-    namespace: capi-operator-system
+    namespace: argocd
     server: https://kubernetes.default.svc
   project: default
   source:
-    repoURL: https://charts.jetstack.io
-    targetRevision: 1.17.2
-    chart: cert-manager
-    helm:
-      values: |
-        installCRDs: true
-  syncPolicy:
-    syncOptions:
-    - CreateNamespace=true
-    - ServerSideApply=true
-    automated: 
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: cluster-api-operator-main
-  namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  destination:
-    namespace: capi-operator-system
-    server: https://kubernetes.default.svc
-  project: default
-  source:
-    repoURL: https://kubernetes-sigs.github.io/cluster-api-operator
-    targetRevision: 0.19.0
-    chart: cluster-api-operator
-    helm:
-      values: |
-        manager:
-          featureGates:
-            proxmox:
-              ClusterTopology: true
-            core:
-              ClusterTopology: true
-            kubeadm:
-              ClusterTopology: true
-        core:
-          cluster-api:
-            enabled: true
-            version: v1.10.2
-        bootstrap:
-          kubeadm: 
-            enabled: true
-            version: v1.10.2
-        controlPlane: 
-          kubeadm: 
-            enabled: true
-            version: v1.10.2
-        infrastructure: 
-          proxmox:
-            enabled: true
-            version: v0.7.1
-        ipam:
-          in-cluster:
-            enabled: true
-            version: v1.0.1
-        addon:
-          helm: 
-            enabled: true
-            version: v0.3.1
-  syncPolicy:
-    syncOptions:
-    - CreateNamespace=true
-    - ServerSideApply=true
-    automated: 
-      prune: true
-      selfHeal: true
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: cluster-api-operator-caprox-engine
-  namespace: argocd 
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  destination:
-    namespace: capi-operator-system
-    server: https://kubernetes.default.svc
-  project: default
-  source:
-    repoURL: https://github.com/3deep5me/cluster-api-provider-proxmox-ionos.git
-    targetRevision: d6317496f9075fab41d0072c6695bfbb23e9d2a3
-    path: templates/clusterclass-cilium-with-shared-ippool/base
+    repoURL: https://github.com/3deep5me/blogposts.git
+    targetRevision: cluster-api-proxmox
+    path: caprox-engine/apps
   syncPolicy:
     syncOptions:
     - CreateNamespace=true
@@ -329,7 +241,7 @@ spec:
 ```
 Save the file and apply it with this command.
 ```bash
-sudo k3s kubectl apply -f apps-cluster-api.yaml
+sudo k3s kubectl apply -f apps-of-apps-cluster-api.yaml
 ```
 After a while all Apps should be Heathly and synced.
 ```bash
@@ -489,7 +401,10 @@ kubectl get nodes
 ```
 
 ```bash
-OUTPUT (example):
+kubectl get nodes
+NAME                                            STATUS   ROLES           AGE     VERSION
+manuels-k8s-cluster-control-plane-4z458-ghx2z   Ready    control-plane   11m     v1.33.1
+manuels-k8s-cluster-worker-6vhjx-c2nv2-v4dbw    Ready    node            5m23s   v1.33.1
 ```
 
 If you want to interact with the Management VM/Cluster API again, you'll need to unset the environment variable:
@@ -513,7 +428,7 @@ However, if you encounter problems, it's likely that you either missed a step or
 
 Now that your Kubernetes engine is configured, what can you do with it? Here are some common next steps I like to take on newly created Kubernetes clusters:
 
-* **Set up 1Password with an external secret manager** for secure secret management.
+* **[Set up 1Password with a external secret manager](https://dev.to/3deep5me/using-1password-with-external-secrets-operator-in-a-gitops-way-4lo4)** for secure secret management.
 * **Install an ingress controller** to manage external access to cluster services.
 * **Configure load balancing in Cilium** for multi-node load balancing.
 * **Install applications** like databases or Pi-hole using Helm.
