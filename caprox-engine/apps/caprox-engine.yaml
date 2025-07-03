@@ -27,5 +27,7 @@ spec:
       prune: true
       selfHeal: true
   ignoreDifferences:
-    - group: cluster.x-k8s.io/v1beta1
+    - group: cluster.x-k8s.io
       kind: ClusterClass
+      jsonPointers:
+        - /spec
