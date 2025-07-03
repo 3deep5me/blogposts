@@ -7,10 +7,6 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-# we need more tries because the operator needs time to reconcile the resources
-operation:
-  retry:
-    limit: 10
 spec:
   destination:
     namespace: capi-operator-system
@@ -21,6 +17,9 @@ spec:
     targetRevision: d6317496f9075fab41d0072c6695bfbb23e9d2a3
     path: templates/clusterclass-cilium-with-shared-ippool/base
   syncPolicy:
+  # we need more tries because the operator needs time to reconcile the resources
+    retry:
+      limit: 10
     syncOptions:
     - CreateNamespace=true
     - ServerSideApply=true
